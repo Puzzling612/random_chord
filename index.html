@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>랜덤 코드 연습</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --text: #1a1d21;
+    --muted: #6b7280;
+    --accent: #3b6ef5;
+    --accent-text: #ffffff;
+    --border: #d9dde3;
+    --progress-track: #e5e8ee;
+    --chip-bg: #eef1f6;
+    --chip-checked: #3b6ef5;
+    --danger: #d5443c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --panel: #1e2127;
+      --text: #e8eaed;
+      --muted: #9aa2ad;
+      --accent: #5b8afd;
+      --accent-text: #0e1116;
+      --border: #33383f;
+      --progress-track: #2a2e35;
+      --chip-bg: #282c33;
+      --chip-checked: #5b8afd;
+      --danger: #ef6a62;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 16px 16px 48px;
+  }
+  h1 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 8px 0 16px;
+    text-align: center;
+    letter-spacing: 0.02em;
+  }
+
+  /* ---- display area ---- */
+  #display {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px 16px 0;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+  }
+  #chordName {
+    font-size: clamp(3.5rem, 18vw, 7rem);
+    font-weight: 800;
+    line-height: 1.1;
+    min-height: 1.1em;
+    letter-spacing: -0.02em;
+  }
+  #chordNotes {
+    font-size: clamp(1.2rem, 5vw, 2rem);
+    color: var(--muted);
+    min-height: 1.5em;
+    margin: 10px 0 4px;
+    letter-spacing: 0.06em;
+  }
+  #hint {
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin: 14px 0 18px;
+  }
+  #progress {
+    height: 6px;
+    background: var(--progress-track);
+    margin: 0 -16px;
+  }
+  #progressFill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+  }
+
+  /* ---- controls ---- */
+  .controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin: 16px 0 24px;
+  }
+  #startBtn {
+    flex: 0 0 auto;
+    padding: 12px 28px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 12px;
+    background: var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+  }
+  #startBtn.running { background: var(--danger); color: #fff; }
+  .interval-box {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 14px;
+  }
+  .interval-box label { font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+  #intervalRange { flex: 1; accent-color: var(--accent); min-width: 60px; }
+  #intervalNum {
+    width: 3.2em;
+    font-size: 1rem;
+    text-align: right;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 6px;
+  }
+
+  /* ---- settings ---- */
+  .settings {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+  }
+  .settings h2 {
+    font-size: 0.95rem;
+    margin: 0 0 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .settings h2 .small-btns button {
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 8px;
+    cursor: pointer;
+    margin-left: 6px;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chips label {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--chip-bg);
+    border: 1px solid var(--border);
+    font-size: 0.95rem;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .chips input { display: none; }
+  .chips label:has(input:checked) {
+    background: var(--chip-checked);
+    border-color: var(--chip-checked);
+    color: #fff;
+    font-weight: 600;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    align-items: center;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 0.9rem;
+  }
+  .row .row-label { color: var(--muted); min-width: 5.5em; }
+  .row label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+  .row input[type="radio"], .row input[type="checkbox"] { accent-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎸 랜덤 코드 연습</h1>
+
+  <div id="display" title="클릭하면 다음 코드">
+    <div id="chordName">—</div>
+    <div id="chordNotes"></div>
+    <div id="hint">시작을 누르면 랜덤 코드가 표시됩니다 · 화면 클릭 / 스페이스바 = 바로 다음 코드</div>
+    <div id="progress"><div id="progressFill"></div></div>
+  </div>
+
+  <div class="controls">
+    <button id="startBtn">시작</button>
+    <div class="interval-box">
+      <label for="intervalRange">간격</label>
+      <input type="range" id="intervalRange" min="1" max="60" step="1" value="5">
+      <input type="number" id="intervalNum" min="1" max="60" step="1" value="5">
+      <span style="color:var(--muted);font-size:0.85rem;">초</span>
+    </div>
+  </div>
+
+  <div class="settings">
+    <h2>
+      코드 종류
+      <span class="small-btns">
+        <button id="checkAll" type="button">전체 선택</button>
+        <button id="uncheckAll" type="button">전체 해제</button>
+      </span>
+    </h2>
+    <div class="chips" id="qualityChips"></div>
+
+    <div class="row">
+      <span class="row-label">루트음 표기</span>
+      <label><input type="radio" name="notation" value="mixed" checked> 혼용 (B♭·E♭·F♯…)</label>
+      <label><input type="radio" name="notation" value="sharp"> 샾만</label>
+      <label><input type="radio" name="notation" value="flat"> 플랫만</label>
+    </div>
+
+    <div class="row">
+      <span class="row-label">구성음</span>
+      <label><input type="checkbox" id="showNotes" checked> 코드 이름 아래에 구성음 표시</label>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ===== 음악 이론: 코드 정의 및 구성음 계산 ===== */
+
+const LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
+const LETTER_SEMIS = [0, 2, 4, 5, 7, 9, 11];
+const ACC_GLYPHS = { "-2": "𝄫", "-1": "♭", "0": "", "1": "♯", "2": "𝄪" };
+
+// 각 코드 종류: 표기 접미사 + [문자 오프셋(도수-1), 반음 수] 인터벌 목록
+const QUALITIES = [
+  { id: "major", label: "Major",  suffix: "",     intervals: [[0,0],[2,4],[4,7]] },
+  { id: "minor", label: "Minor",  suffix: "m",    intervals: [[0,0],[2,3],[4,7]] },
+  { id: "dom7",  label: "7",      suffix: "7",    intervals: [[0,0],[2,4],[4,7],[6,10]] },
+  { id: "maj7",  label: "maj7",   suffix: "maj7", intervals: [[0,0],[2,4],[4,7],[6,11]] },
+  { id: "m7",    label: "m7",     suffix: "m7",   intervals: [[0,0],[2,3],[4,7],[6,10]] },
+  { id: "six",   label: "6",      suffix: "6",    intervals: [[0,0],[2,4],[4,7],[5,9]] },
+  { id: "m6",    label: "m6",     suffix: "m6",   intervals: [[0,0],[2,3],[4,7],[5,9]] },
+  { id: "sus2",  label: "sus2",   suffix: "sus2", intervals: [[0,0],[1,2],[4,7]] },
+  { id: "sus4",  label: "sus4",   suffix: "sus4", intervals: [[0,0],[3,5],[4,7]] },
+  { id: "aug",   label: "aug",    suffix: "aug",  intervals: [[0,0],[2,4],[4,8]] },
+  { id: "dim",   label: "dim",    suffix: "dim",  intervals: [[0,0],[2,3],[4,6]] },
+  { id: "dim7",  label: "dim7",   suffix: "dim7", intervals: [[0,0],[2,3],[4,6],[6,9]] },
+  { id: "m7b5",  label: "m7♭5",   suffix: "m7♭5", intervals: [[0,0],[2,3],[4,6],[6,10]] },
+  { id: "nine",  label: "9",      suffix: "9",    intervals: [[0,0],[2,4],[4,7],[6,10],[8,14]] },
+  { id: "maj9",  label: "maj9",   suffix: "maj9", intervals: [[0,0],[2,4],[4,7],[6,11],[8,14]] },
+  { id: "m9",    label: "m9",     suffix: "m9",   intervals: [[0,0],[2,3],[4,7],[6,10],[8,14]] },
+  { id: "add9",  label: "add9",   suffix: "add9", intervals: [[0,0],[2,4],[4,7],[8,14]] },
+];
+const DEFAULT_QUALITY_IDS = ["major", "minor", "dom7", "dim", "dim7", "m7b5"];
+
+// 루트: { letter 인덱스(C=0), 임시표(-1/0/+1) }
+const ROOTS = {
+  mixed: [[0,0],[1,-1],[1,0],[2,-1],[2,0],[3,0],[3,1],[4,0],[5,-1],[5,0],[6,-1],[6,0]],
+  sharp: [[0,0],[0,1],[1,0],[1,1],[2,0],[3,0],[3,1],[4,0],[4,1],[5,0],[5,1],[6,0]],
+  flat:  [[0,0],[1,-1],[1,0],[2,-1],[2,0],[3,0],[4,-1],[4,0],[5,-1],[5,0],[6,-1],[6,0]],
+};
+
+function noteName(letterIdx, acc) {
+  return LETTERS[letterIdx] + (ACC_GLYPHS[String(acc)] ?? "");
+}
+
+// 루트와 인터벌로 정확한 이명동음 철자의 구성음 계산 (예: F♯m7♭5 → F♯ A C E)
+function spellChord(rootLetter, rootAcc, intervals) {
+  const rootSemi = LETTER_SEMIS[rootLetter] + rootAcc;
+  return intervals.map(([dLetter, dSemi]) => {
+    const letterIdx = (rootLetter + dLetter) % 7;
+    const octaves = Math.floor((rootLetter + dLetter) / 7);
+    const targetSemi = rootSemi + dSemi;
+    const naturalSemi = LETTER_SEMIS[letterIdx] + 12 * octaves;
+    let acc = targetSemi - naturalSemi;
+    while (acc > 6) acc -= 12;
+    while (acc < -6) acc += 12;
+    return noteName(letterIdx, acc);
+  });
+}
+
+function makeChord(root, quality) {
+  const [letter, acc] = root;
+  return {
+    name: noteName(letter, acc) + quality.suffix,
+    notes: spellChord(letter, acc, quality.intervals),
+  };
+}
+
+/* ===== 설정 (localStorage) ===== */
+
+const STORAGE_KEY = "randomChordSettings";
+
+function loadSettings() {
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch (e) {}
+  return {
+    qualities: Array.isArray(s.qualities) ? s.qualities : DEFAULT_QUALITY_IDS,
+    interval: Math.min(60, Math.max(1, Number(s.interval) || 5)),
+    notation: ["mixed", "sharp", "flat"].includes(s.notation) ? s.notation : "mixed",
+    showNotes: s.showNotes !== false,
+  };
+}
+
+function saveSettings() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}
+
+const settings = loadSettings();
+
+/* ===== UI 구성 ===== */
+
+const chipsEl = document.getElementById("qualityChips");
+const chordNameEl = document.getElementById("chordName");
+const chordNotesEl = document.getElementById("chordNotes");
+const hintEl = document.getElementById("hint");
+const startBtn = document.getElementById("startBtn");
+const displayEl = document.getElementById("display");
+const progressFill = document.getElementById("progressFill");
+const intervalRange = document.getElementById("intervalRange");
+const intervalNum = document.getElementById("intervalNum");
+const showNotesEl = document.getElementById("showNotes");
+
+for (const q of QUALITIES) {
+  const label = document.createElement("label");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.value = q.id;
+  input.checked = settings.qualities.includes(q.id);
+  input.addEventListener("change", () => {
+    settings.qualities = selectedQualityIds();
+    saveSettings();
+  });
+  label.appendChild(input);
+  label.appendChild(document.createTextNode(q.label));
+  chipsEl.appendChild(label);
+}
+
+function selectedQualityIds() {
+  return [...chipsEl.querySelectorAll("input:checked")].map(i => i.value);
+}
+
+function setAllQualities(checked) {
+  chipsEl.querySelectorAll("input").forEach(i => { i.checked = checked; });
+  settings.qualities = selectedQualityIds();
+  saveSettings();
+}
+document.getElementById("checkAll").addEventListener("click", () => setAllQualities(true));
+document.getElementById("uncheckAll").addEventListener("click", () => setAllQualities(false));
+
+function setIntervalValue(v) {
+  v = Math.min(60, Math.max(1, Math.round(Number(v) || 5)));
+  settings.interval = v;
+  intervalRange.value = v;
+  intervalNum.value = v;
+  saveSettings();
+}
+intervalRange.value = settings.interval;
+intervalNum.value = settings.interval;
+intervalRange.addEventListener("input", () => setIntervalValue(intervalRange.value));
+intervalNum.addEventListener("change", () => setIntervalValue(intervalNum.value));
+
+document.querySelector(`input[name="notation"][value="${settings.notation}"]`).checked = true;
+document.querySelectorAll('input[name="notation"]').forEach(r => {
+  r.addEventListener("change", () => {
+    if (r.checked) { settings.notation = r.value; saveSettings(); }
+  });
+});
+
+showNotesEl.checked = settings.showNotes;
+showNotesEl.addEventListener("change", () => {
+  settings.showNotes = showNotesEl.checked;
+  saveSettings();
+  chordNotesEl.style.visibility = settings.showNotes ? "visible" : "hidden";
+});
+chordNotesEl.style.visibility = settings.showNotes ? "visible" : "hidden";
+
+/* ===== 랜덤 출제 및 타이머 ===== */
+
+let running = false;
+let lastName = null;
+let nextAt = 0;
+let rafId = null;
+
+function randomChord() {
+  const pool = QUALITIES.filter(q => settings.qualities.includes(q.id));
+  if (pool.length === 0) return null;
+  const roots = ROOTS[settings.notation];
+  let chord;
+  do {
+    chord = makeChord(
+      roots[Math.floor(Math.random() * roots.length)],
+      pool[Math.floor(Math.random() * pool.length)]
+    );
+  } while (chord.name === lastName && (pool.length > 1 || roots.length > 1));
+  lastName = chord.name;
+  return chord;
+}
+
+function showNext() {
+  const chord = randomChord();
+  if (!chord) {
+    stop();
+    chordNameEl.textContent = "—";
+    chordNotesEl.textContent = "";
+    hintEl.textContent = "코드 종류를 하나 이상 선택하세요";
+    return;
+  }
+  chordNameEl.textContent = chord.name;
+  chordNotesEl.textContent = chord.notes.join("  ");
+  nextAt = performance.now() + settings.interval * 1000;
+}
+
+function tick(now) {
+  if (!running) return;
+  const remaining = nextAt - now;
+  if (remaining <= 0) {
+    showNext();
+  } else {
+    progressFill.style.width = (100 * (1 - remaining / (settings.interval * 1000))) + "%";
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
+function start() {
+  if (selectedQualityIds().length === 0) {
+    hintEl.textContent = "코드 종류를 하나 이상 선택하세요";
+    return;
+  }
+  running = true;
+  startBtn.textContent = "정지";
+  startBtn.classList.add("running");
+  hintEl.textContent = "화면 클릭 / 스페이스바 = 바로 다음 코드";
+  showNext();
+  rafId = requestAnimationFrame(tick);
+}
+
+function stop() {
+  running = false;
+  startBtn.textContent = "시작";
+  startBtn.classList.remove("running");
+  progressFill.style.width = "0%";
+  if (rafId) cancelAnimationFrame(rafId);
+}
+
+startBtn.addEventListener("click", () => (running ? stop() : start()));
+displayEl.addEventListener("click", () => { if (running) showNext(); });
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "BUTTON") {
+    e.preventDefault();
+    if (running) showNext(); else start();
+  }
+});
+</script>
+</body>
+</html>
