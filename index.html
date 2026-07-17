@@ -255,7 +255,11 @@
     <div class="row">
       <span class="row-label">사운드</span>
       <label><input type="checkbox" id="metroOn"> 메트로놈</label>
-      <label><input type="checkbox" id="backingOn"> 코드 백킹트랙</label>
+      <label><input type="checkbox" id="backingOn"> 코드 백킹트랙 (워킹 베이스 + 컴핑)</label>
+    </div>
+    <div class="row" style="margin-top:0;padding-top:0;border-top:none;">
+      <span class="row-label"></span>
+      <span style="color:var(--muted);font-size:0.78rem;">사운드를 켜면 코드가 마디 단위로 전환되고, 베이스가 다음 코드 근음으로 반음 접근합니다.</span>
     </div>
 
     <div class="row">
@@ -450,10 +454,10 @@ const volumeEl = document.getElementById("volumeRange");
 
 let audioCtx = null;
 let masterGain = null;
+let bassFilter = null;
 let schedTimer = null;
 let nextBeatTime = 0;
 let beatNum = 0;
-let currentMidi = [];
 
 function ensureAudio() {
   if (!audioCtx) {
@@ -461,6 +465,10 @@ function ensureAudio() {
     masterGain = audioCtx.createGain();
     masterGain.gain.value = settings.volume;
     masterGain.connect(audioCtx.destination);
+    bassFilter = audioCtx.createBiquadFilter();
+    bassFilter.type = "lowpass";
+    bassFilter.frequency.value = 650;
+    bassFilter.connect(masterGain);
   }
   if (audioCtx.state === "suspended") audioCtx.resume();
 }
@@ -480,65 +488,133 @@ function scheduleClick(t, accent) {
   osc.stop(t + 0.06);
 }
 
-function scheduleChordHit(t, accent, beatDur) {
-  if (currentMidi.length === 0) return;
-  const dur = Math.min(beatDur * 0.95, 1.2);
-  for (const m of currentMidi) {
-    const osc = audioCtx.createOscillator();
-    osc.type = "triangle";
-    osc.frequency.value = midiFreq(m);
-    const g = audioCtx.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(accent ? 0.1 : 0.07, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    osc.connect(g).connect(masterGain);
-    osc.start(t);
-    osc.stop(t + dur + 0.05);
+// 워킹 베이스: 코드 안에서는 근음-5음-3음-5음을 오가며 걷고, 코드가 바뀌기 직전 마지막 박에는
+// 다음 코드 근음의 반음 아래(크로매틱 어프로치)로 이동해 자연스럽게 이어지게 한다.
+const BASS_WALK_PATTERN = [0, 2, 1, 2];
+
+function scheduleBassNote(t, dur, curChord, approachTargetChord, stepIndex) {
+  let midiNote;
+  if (approachTargetChord) {
+    const targetPc = ((approachTargetChord.midi[0] % 12) + 12) % 12;
+    midiNote = 36 + targetPc - 1;
+  } else {
+    const idx = BASS_WALK_PATTERN[stepIndex % BASS_WALK_PATTERN.length];
+    midiNote = curChord.midi[Math.min(idx, curChord.midi.length - 1)] - 12;
   }
-  if (accent) { // 첫 박에는 루트 베이스도 함께
-    const osc = audioCtx.createOscillator();
-    osc.type = "sine";
-    osc.frequency.value = midiFreq(currentMidi[0] - 12);
-    const g = audioCtx.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.25, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.001, t + Math.min(beatDur * 1.9, 1.6));
-    osc.connect(g).connect(masterGain);
-    osc.start(t);
-    osc.stop(t + Math.min(beatDur * 1.9, 1.6) + 0.05);
+  const osc = audioCtx.createOscillator();
+  osc.type = "sawtooth";
+  osc.frequency.value = midiFreq(midiNote);
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.3, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.connect(g).connect(bassFilter);
+  osc.start(t);
+  osc.stop(t + dur + 0.05);
+}
+
+// 컴핑: 마디마다 당김음 패턴(8분음표 단위)으로 가이드톤(근음을 뺀 나머지 구성음)을 짧게 찍는다.
+// 근음은 베이스가 맡으므로 위쪽 보이싱에서는 생략해 저음이 뭉개지지 않게 한다.
+const COMP_PATTERNS = { 2: [0, 2], 3: [0, 3], 4: [0, 3, 4], 6: [0, 3, 6, 9] };
+
+function scheduleCompingBar(barStart, beatDur, barBeats, curChord) {
+  const eighth = beatDur / 2;
+  const pattern = COMP_PATTERNS[barBeats] || [0];
+  const tones = curChord.midi.length > 1 ? curChord.midi.slice(1) : curChord.midi;
+  for (const offset of pattern) {
+    const hitT = barStart + offset * eighth;
+    const dur = Math.min(eighth * 1.7, 0.85);
+    for (const m of tones) {
+      const osc = audioCtx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = midiFreq(m);
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0, hitT);
+      g.gain.linearRampToValueAtTime(0.09, hitT + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.001, hitT + dur);
+      osc.connect(g).connect(masterGain);
+      osc.start(hitT);
+      osc.stop(hitT + dur + 0.05);
+    }
   }
 }
 
 function schedulerTick() {
   const beatDur = 60 / settings.bpm;
-  while (nextBeatTime < audioCtx.currentTime + 0.12) {
-    const accent = beatNum % settings.beats === 0;
-    if (settings.metro) scheduleClick(nextBeatTime, accent);
-    if (settings.backing) scheduleChordHit(nextBeatTime, accent, beatDur);
-    nextBeatTime += beatDur;
+  while (nextBeatTime < audioCtx.currentTime + 0.15) {
+    const t = nextBeatTime;
+    const barBeats = settings.beats;
+    const posInBar = beatNum % barBeats;
+    const accent = posInBar === 0;
+    const isLastBeatOfChord = beatsIntoChord === totalBeatsInChord - 1;
+
+    if (settings.metro) scheduleClick(t, accent);
+    if (settings.backing && chord) {
+      scheduleBassNote(t, Math.min(beatDur * 0.92, 1.1), chord, isLastBeatOfChord ? pendingChord : null, beatsIntoChord);
+      if (posInBar === 0) scheduleCompingBar(t, beatDur, barBeats, chord);
+    }
+
+    beatsIntoChord++;
+    if (beatsIntoChord >= totalBeatsInChord) {
+      if (!pendingChord) {
+        stop();
+        chordNameEl.textContent = "—";
+        chordNotesEl.textContent = "";
+        hintEl.textContent = "코드 종류를 하나 이상 선택하세요";
+        return;
+      }
+      const flipTime = t + beatDur;
+      const newChord = pendingChord;
+      const flipDelayMs = Math.max(0, (flipTime - audioCtx.currentTime) * 1000);
+      setTimeout(() => { if (running) renderChordDOM(newChord); }, flipDelayMs);
+      chord = newChord;
+      chordStartAudioTime = flipTime;
+      pendingChord = randomChord();
+      beatsIntoChord = 0;
+      const barDur = beatDur * settings.beats;
+      barsPerChord = Math.max(1, Math.round(settings.interval / barDur));
+      totalBeatsInChord = barsPerChord * settings.beats;
+    }
     beatNum++;
+    nextBeatTime += beatDur;
   }
 }
 
-function startAudio() {
-  if (!running || (!settings.metro && !settings.backing)) return;
+function enterSoundMode(freshChord) {
   ensureAudio();
-  if (schedTimer) return;
+  soundMode = true;
+  const beatDur = 60 / settings.bpm;
+  const barDur = beatDur * settings.beats;
+  barsPerChord = Math.max(1, Math.round(settings.interval / barDur));
+  totalBeatsInChord = barsPerChord * settings.beats;
+  beatsIntoChord = 0;
   beatNum = 0;
+  if (freshChord || !chord) {
+    chord = randomChord();
+    if (!chord) {
+      stop();
+      hintEl.textContent = "코드 종류를 하나 이상 선택하세요";
+      return;
+    }
+  }
+  renderChordDOM(chord);
+  pendingChord = randomChord();
   nextBeatTime = audioCtx.currentTime + 0.1;
+  chordStartAudioTime = nextBeatTime;
+  if (schedTimer) clearInterval(schedTimer);
   schedTimer = setInterval(schedulerTick, 30);
 }
 
-function stopAudio() {
-  if (schedTimer) {
-    clearInterval(schedTimer);
-    schedTimer = null;
-  }
-}
-
 function syncAudio() {
-  if (running && (settings.metro || settings.backing)) startAudio();
-  else stopAudio();
+  if (!running) return;
+  const wantSound = settings.metro || settings.backing;
+  if (wantSound && !soundMode) {
+    enterSoundMode(false);
+  } else if (!wantSound && soundMode) {
+    if (schedTimer) { clearInterval(schedTimer); schedTimer = null; }
+    soundMode = false;
+    nextAt = performance.now() + settings.interval * 1000;
+  }
 }
 
 metroEl.checked = settings.metro;
@@ -582,45 +658,91 @@ let lastName = null;
 let nextAt = 0;
 let rafId = null;
 
+// 현재/다음 코드 상태 (사운드 모드에서는 마디 경계에 맞춰 dominant chord -> pending chord로 전환)
+let chord = null;
+let pendingChord = null;
+let soundMode = false;
+let beatsIntoChord = 0;
+let totalBeatsInChord = 4;
+let barsPerChord = 1;
+let chordStartAudioTime = 0;
+
 function randomChord() {
   const pool = QUALITIES.filter(q => settings.qualities.includes(q.id));
   if (pool.length === 0) return null;
   const roots = ROOTS[settings.notation];
-  let chord;
+  let c;
   do {
-    chord = makeChord(
+    c = makeChord(
       roots[Math.floor(Math.random() * roots.length)],
       pool[Math.floor(Math.random() * pool.length)]
     );
-  } while (chord.name === lastName && (pool.length > 1 || roots.length > 1));
-  lastName = chord.name;
-  return chord;
+  } while (c.name === lastName && (pool.length > 1 || roots.length > 1));
+  lastName = c.name;
+  return c;
+}
+
+function renderChordDOM(c) {
+  chordNameEl.textContent = c.name;
+  chordNotesEl.textContent = c.notes.join("  ");
 }
 
 function showNext() {
-  const chord = randomChord();
+  chord = randomChord();
   if (!chord) {
     stop();
     chordNameEl.textContent = "—";
     chordNotesEl.textContent = "";
     hintEl.textContent = "코드 종류를 하나 이상 선택하세요";
-    return;
+    return false;
   }
-  chordNameEl.textContent = chord.name;
-  chordNotesEl.textContent = chord.notes.join("  ");
-  currentMidi = chord.midi;
+  renderChordDOM(chord);
   nextAt = performance.now() + settings.interval * 1000;
+  return true;
 }
 
-function tick(now) {
+function manualSkip() {
   if (!running) return;
-  const remaining = nextAt - now;
-  if (remaining <= 0) {
-    showNext();
+  if (soundMode) {
+    const next = pendingChord || randomChord();
+    if (!next) {
+      stop();
+      hintEl.textContent = "코드 종류를 하나 이상 선택하세요";
+      return;
+    }
+    chord = next;
+    renderChordDOM(chord);
+    pendingChord = randomChord();
+    beatsIntoChord = 0;
+    if (audioCtx) chordStartAudioTime = audioCtx.currentTime;
+    const beatDur = 60 / settings.bpm;
+    const barDur = beatDur * settings.beats;
+    barsPerChord = Math.max(1, Math.round(settings.interval / barDur));
+    totalBeatsInChord = barsPerChord * settings.beats;
   } else {
-    progressFill.style.width = (100 * (1 - remaining / (settings.interval * 1000))) + "%";
+    showNext();
   }
-  rafId = requestAnimationFrame(tick);
+}
+
+function visualTick(now) {
+  if (!running) return;
+  if (soundMode) {
+    if (audioCtx) {
+      const beatDur = 60 / settings.bpm;
+      const chordDur = totalBeatsInChord * beatDur;
+      const elapsed = audioCtx.currentTime - chordStartAudioTime;
+      const pct = chordDur > 0 ? Math.max(0, Math.min(100, 100 * elapsed / chordDur)) : 0;
+      progressFill.style.width = pct + "%";
+    }
+  } else {
+    const remaining = nextAt - now;
+    if (remaining <= 0) {
+      showNext();
+    } else {
+      progressFill.style.width = (100 * (1 - remaining / (settings.interval * 1000))) + "%";
+    }
+  }
+  rafId = requestAnimationFrame(visualTick);
 }
 
 function start() {
@@ -632,9 +754,14 @@ function start() {
   startBtn.textContent = "정지";
   startBtn.classList.add("running");
   hintEl.textContent = "화면 클릭 / 스페이스바 = 바로 다음 코드";
-  showNext();
-  startAudio();
-  rafId = requestAnimationFrame(tick);
+
+  if (settings.metro || settings.backing) {
+    enterSoundMode(true);
+  } else {
+    soundMode = false;
+    if (!showNext()) return;
+  }
+  rafId = requestAnimationFrame(visualTick);
 }
 
 function stop() {
@@ -643,15 +770,16 @@ function stop() {
   startBtn.classList.remove("running");
   progressFill.style.width = "0%";
   if (rafId) cancelAnimationFrame(rafId);
-  stopAudio();
+  if (schedTimer) { clearInterval(schedTimer); schedTimer = null; }
+  soundMode = false;
 }
 
 startBtn.addEventListener("click", () => (running ? stop() : start()));
-displayEl.addEventListener("click", () => { if (running) showNext(); });
+displayEl.addEventListener("click", manualSkip);
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "BUTTON") {
     e.preventDefault();
-    if (running) showNext(); else start();
+    if (running) manualSkip(); else start();
   }
 });
 </script>
